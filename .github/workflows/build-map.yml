@@ -8,7 +8,7 @@ on:
     - cron: "17 3 * * 1"    # every Monday, to pick up new OpenStreetMap edits
 
 permissions:
-  contents: read
+  contents: write   # to save results to the map-output branch
   pages: write
   id-token: write
 
@@ -38,6 +38,23 @@ jobs:
           python find_gated.py --out site $EXTRA
           cp site/gated_map.html site/index.html
           rm -f site/osm_raw.json
+
+      - name: Take pictures of the estates
+        continue-on-error: true
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+          python snapshot.py --site site --top 10
+
+      - name: Save results to the map-output branch
+        continue-on-error: true
+        run: |
+          cd site
+          git init -q -b map-output
+          git add -A
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
+            commit -qm "Map output from run ${{ github.run_number }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" map-output
 
       - uses: actions/upload-pages-artifact@v3
         with:
