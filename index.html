@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Estate Finder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Layout: sticky header with area chips, then a single column of estate cards. */
+:root {
+  --bg: #f5f6f3; --card: #ffffff; --fg: #1d2420; --muted: #5d6a63; --line: #dde2dc;
+  --accent: #1f6b4f; --accent-fg: #ffffff; --chip: #e8ece7;
+  --likely: #1f6b4f; --possible: #b4690e; --seen: #6b3fa0; --google: #2b5fb4;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121614; --card: #1b201d; --fg: #e8ece9; --muted: #9aa69f; --line: #2b322e;
+    --accent: #4cb38a; --accent-fg: #0d1a14; --chip: #242b27;
+    --likely: #4cb38a; --possible: #e2a04a; --seen: #b48be0; --google: #7aa5ec; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121614; --card: #1b201d; --fg: #e8ece9; --muted: #9aa69f; --line: #2b322e;
+  --accent: #4cb38a; --accent-fg: #0d1a14; --chip: #242b27;
+  --likely: #4cb38a; --possible: #e2a04a; --seen: #b48be0; --google: #7aa5ec; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--body); }
+.wrap { max-width: 720px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
+header .wrap { padding-block: 16px 12px; display: grid; gap: 12px; }
+h1 { font: 700 26px/1.1 var(--display); margin: 0; letter-spacing: -0.01em; }
+.sub { color: var(--muted); margin: 2px 0 0; font-size: 14px; }
+.chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.chip { flex: none; border: 1px solid var(--line); background: var(--chip); color: var(--fg);
+  font: 500 14px var(--body); padding: 7px 14px; border-radius: 999px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.chip small { opacity: .75; margin-left: 4px; font-variant-numeric: tabular-nums; }
+.tools { display: flex; gap: 8px; flex-wrap: wrap; }
+.tools input { flex: 1 1 200px; min-width: 0; font: 15px var(--body); padding: 9px 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--fg); }
+button.ghost { font: 500 14px var(--body); padding: 9px 14px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+main .wrap { padding-block: 16px 40px; display: grid; gap: 12px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px;
+  display: grid; gap: 8px; }
+.top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.name { font: 600 17px/1.3 var(--display); margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.dist { color: var(--muted); font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 12px; color: var(--muted); font-size: 13px; }
+.tag { font-weight: 600; font-size: 12px; letter-spacing: .03em; text-transform: uppercase; }
+.tag.likely { color: var(--likely); } .tag.possible { color: var(--possible); }
+.tag.seen { color: var(--seen); } .tag.google { color: var(--google); }
+.note { font-size: 14px; margin: 0; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.actions a, .actions button { font: 600 14px var(--body); padding: 8px 14px; border-radius: 10px;
+  text-decoration: none; cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--fg); }
+.actions a.go { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.empty { text-align: center; color: var(--muted); padding: 40px 0; }
+.status { color: var(--muted); font-size: 13px; min-height: 1em; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div>
+      <h1>Estate Finder</h1>
+      <p class="sub" id="summary"></p>
+    </div>
+    <div class="chips" id="areas" role="toolbar" aria-label="Choose an area"></div>
+    <div class="tools">
+      <input id="q" type="search" placeholder="Search estates" aria-label="Search">
+      <button class="ghost" id="near" type="button">Nearest to me</button>
+    </div>
+    <div class="status" id="status" aria-live="polite"></div>
+  </div>
+</header>
+<main><div class="wrap" id="list"></div></main>
+
+<script>
+const ITEMS = [{"name": "Kihingo Village", "area": "Kitisuru", "lat": -1.231642, "lon": 36.770676, "kind": "likely", "score": 100, "gates": 2, "ha": 14.4, "why": "tagged as gated; 2 gate(s); wall/fence along 100% of edge; named", "source": "map"}, {"name": "Rosslyn Ridge", "area": "Runda", "lat": -1.223945, "lon": 36.805881, "kind": "likely", "score": 70, "gates": 5, "ha": 7.5, "why": "5 gate(s); named; estate-style name", "source": "map"}, {"name": "Rosslyn Grove", "area": "Runda", "lat": -1.221634, "lon": 36.805378, "kind": "likely", "score": 70, "gates": 4, "ha": 3.0, "why": "4 gate(s); named; estate-style name", "source": "map"}, {"name": "Mathare North Area4", "area": "Kenya Pipeline Estate", "lat": -1.254586, "lon": 36.864222, "kind": "likely", "score": 65, "gates": 1, "ha": 18.7, "why": "1 gate(s); wall/fence along 33% of edge; named", "source": "map"}, {"name": "Magnolia Hills", "area": "Manga", "lat": -1.23134, "lon": 36.767847, "kind": "likely", "score": 65, "gates": 1, "ha": 8.1, "why": "1 gate(s); wall/fence along 37% of edge; named", "source": "map"}, {"name": "Fourways", "area": "Fourways Junction", "lat": -1.212579, "lon": 36.840752, "kind": "likely", "score": 60, "gates": 3, "ha": 26.4, "why": "3 gate(s); named", "source": "map"}, {"name": "Kencom Sacco Homes", "area": "Kasarini", "lat": -1.19772, "lon": 36.823632, "kind": "likely", "score": 60, "gates": 2, "ha": 8.2, "why": "2 gate(s); named; estate-style name", "source": "map"}, {"name": "", "area": "Kenya Pipeline Estate", "lat": -1.238142, "lon": 36.860318, "kind": "likely", "score": 60, "gates": 3, "ha": 21.3, "why": "3 gate(s); some wall/fence (28%)", "source": "map"}, {"name": "Countryside Villa", "area": "Kenya Pipeline Estate", "lat": -1.235844, "lon": 36.847819, "kind": "likely", "score": 60, "gates": 1, "ha": 22.1, "why": "1 gate(s); some wall/fence (26%); named; estate-style name", "source": "map"}, {"name": "Edenville", "area": "Edenville", "lat": -1.180071, "lon": 36.828602, "kind": "likely", "score": 60, "gates": 3, "ha": 46.6, "why": "3 gate(s); named", "source": "map"}, {"name": "", "area": "Horse Shoe", "lat": -1.228324, "lon": 36.837722, "kind": "possible", "score": 55, "gates": 1, "ha": 8.5, "why": "1 gate(s); wall/fence along 100% of edge", "source": "map"}, {"name": "Daisy Court 4", "area": "Daisy Court", "lat": -1.213569, "lon": 36.841824, "kind": "possible", "score": 50, "gates": 1, "ha": 0.0, "why": "1 gate(s); named; estate-style name", "source": "map"}, {"name": "Muthaiga Gardens", "area": "Muthaiga", "lat": -1.255026, "lon": 36.830713, "kind": "possible", "score": 50, "gates": 1, "ha": 1.5, "why": "1 gate(s); named; estate-style name", "source": "map"}, {"name": "Muthaiga North Parkside Villas", "area": "Kenya Pipeline Estate", "lat": -1.235844, "lon": 36.852251, "kind": "possible", "score": 50, "gates": 1, "ha": 31.6, "why": "1 gate(s); named; estate-style name", "source": "map"}, {"name": "Muthaiga North Villas", "area": "Kenya Pipeline Estate", "lat": -1.232565, "lon": 36.853905, "kind": "possible", "score": 50, "gates": 1, "ha": 6.1, "why": "1 gate(s); named; estate-style name", "source": "map"}, {"name": "Riverside Estate Kiambu", "area": "Thathi-ini", "lat": -1.176573, "lon": 36.834969, "kind": "possible", "score": 50, "gates": 1, "ha": 2.8, "why": "1 gate(s); named; estate-style name", "source": "map"}, {"name": "Summerfield Estate", "area": "Kugeria", "lat": -1.187346, "lon": 36.843915, "kind": "possible", "score": 50, "gates": 1, "ha": 2.0, "why": "1 gate(s); named; estate-style name", "source": "map"}, {"name": "Riverview Estate", "area": "Kugeria", "lat": -1.195978, "lon": 36.860305, "kind": "possible", "score": 50, "gates": 1, "ha": 28.4, "why": "1 gate(s); named; estate-style name", "source": "map"}, {"name": "Suswa Estate", "area": "Highridge", "lat": -1.255776, "lon": 36.812776, "kind": "possible", "score": 50, "gates": 1, "ha": 1.0, "why": "1 gate(s); named; estate-style name", "source": "map"}, {"name": "Runda Park", "area": "Mimosa", "lat": -1.213083, "lon": 36.803487, "kind": "possible", "score": 50, "gates": 1, "ha": 9.6, "why": "1 gate(s); named; estate-style name", "source": "map"}, {"name": "Enaki", "area": "Nyari", "lat": -1.223261, "lon": 36.786938, "kind": "possible", "score": 50, "gates": 2, "ha": 12.9, "why": "2 gate(s); named", "source": "map"}, {"name": "", "area": "Ridgeways", "lat": -1.226016, "lon": 36.842691, "kind": "possible", "score": 50, "gates": 3, "ha": 42.9, "why": "3 gate(s)", "source": "map"}, {"name": "Manga Gardens", "area": "Manga", "lat": -1.22573, "lon": 36.762087, "kind": "possible", "score": 50, "gates": 1, "ha": 1.8, "why": "1 gate(s); named; estate-style name", "source": "map"}, {"name": "Kijani Gardens", "area": "Kitisuru", "lat": -1.230338, "lon": 36.772333, "kind": "possible", "score": 50, "gates": 1, "ha": 2.1, "why": "1 gate(s); named; estate-style name", "source": "map"}, {"name": "The Pearl Valley", "area": "Peponi", "lat": -1.249364, "lon": 36.803587, "kind": "possible", "score": 50, "gates": 1, "ha": 0.4, "why": "1 gate(s); named; estate-style name", "source": "map"}, {"name": "", "area": "Seventy Two Estate", "lat": -1.212868, "lon": 36.828242, "kind": "possible", "score": 50, "gates": 4, "ha": 10.7, "why": "4 gate(s)", "source": "map"}, {"name": "Mabatini", "area": "Kenya Pipeline Estate", "lat": -1.260291, "lon": 36.863616, "kind": "possible", "score": 40, "gates": 1, "ha": 10.7, "why": "1 gate(s); named", "source": "map"}, {"name": "", "area": "City Park Estate", "lat": -1.256406, "lon": 36.819232, "kind": "possible", "score": 40, "gates": 2, "ha": 1.8, "why": "2 gate(s)", "source": "map"}, {"name": "", "area": "Kenya Pipeline Estate", "lat": -1.251185, "lon": 36.855868, "kind": "possible", "score": 40, "gates": 1, "ha": 4.0, "why": "1 gate(s); some wall/fence (21%)", "source": "map"}, {"name": "Muthithi Gardens", "area": "Kugeria", "lat": -1.184932, "lon": 36.845894, "kind": "possible", "score": 40, "gates": 4, "ha": 65.9, "why": "4 gate(s); named; estate-style name; very large (probably a whole area)", "source": "map"}, {"name": "The Cycads", "area": "Old Runda", "lat": -1.212254, "lon": 36.806761, "kind": "possible", "score": 40, "gates": 1, "ha": 4.1, "why": "1 gate(s); named", "source": "map"}, {"name": "", "area": "Rosslyn", "lat": -1.223011, "lon": 36.795204, "kind": "possible", "score": 40, "gates": 2, "ha": 5.1, "why": "2 gate(s)", "source": "map"}, {"name": "", "area": "Runda Meadows", "lat": -1.218252, "lon": 36.81799, "kind": "possible", "score": 40, "gates": 2, "ha": 31.4, "why": "2 gate(s)", "source": "map"}, {"name": "General Service Unit Staff Quater", "area": "Kenya Pipeline Estate", "lat": -1.246386, "lon": 36.863062, "kind": "possible", "score": 35, "gates": 0, "ha": 13.3, "why": "wall/fence along 56% of edge; named", "source": "map"}, {"name": "Runda Res", "area": "Runda", "lat": -1.218904, "lon": 36.808952, "kind": "possible", "score": 30, "gates": 3, "ha": 107.4, "why": "3 gate(s); named; very large (probably a whole area)", "source": "map"}, {"name": "", "area": "Kenya Pipeline Estate", "lat": -1.239549, "lon": 36.855298, "kind": "possible", "score": 30, "gates": 1, "ha": 4.6, "why": "1 gate(s)", "source": "map"}, {"name": "", "area": "Runda Meadows", "lat": -1.22146, "lon": 36.82014, "kind": "possible", "score": 30, "gates": 1, "ha": 8.0, "why": "1 gate(s)", "source": "map"}, {"name": "", "area": "Kenya Pipeline Estate", "lat": -1.241804, "lon": 36.854354, "kind": "possible", "score": 30, "gates": 1, "ha": 7.8, "why": "1 gate(s)", "source": "map"}, {"name": "", "area": "Horse Shoe", "lat": -1.235712, "lon": 36.844852, "kind": "possible", "score": 30, "gates": 1, "ha": 8.6, "why": "1 gate(s)", "source": "map"}, {"name": "", "area": "Ridgeways", "lat": -1.223858, "lon": 36.847408, "kind": "possible", "score": 30, "gates": 1, "ha": 3.4, "why": "1 gate(s)", "source": "map"}, {"name": "Example estate I drove past", "area": "Kaigu", "lat": -1.204, "lon": 36.772, "kind": "seen", "note": "Blue gate, guard house, ~20 townhouses - delete this row", "date": "2026-11-10", "source": "sighting"}];
+const LABEL = { likely: "Likely gated", possible: "Possibly gated", seen: "Seen by me", google: "Google listing" };
+const RANK = { seen: 0, likely: 1, google: 2, possible: 3 };
+let area = "All", me = null;
+try { area = localStorage.getItem("area") || "All"; } catch (e) {}
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function km(a, b) {
+  const R = 6371, r = x => x * Math.PI / 180;
+  const dLat = r(b.lat - a.lat), dLon = r(b.lon - a.lon);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function renderAreas() {
+  const counts = {};
+  ITEMS.forEach(i => counts[i.area] = (counts[i.area] || 0) + 1);
+  const names = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
+  if (area !== "All" && !counts[area]) area = "All";
+  $("areas").innerHTML = ["All", ...names].map(n =>
+    `<button class="chip" type="button" data-area="${esc(n)}" aria-pressed="${n === area}">${esc(n)}<small>${n === "All" ? ITEMS.length : counts[n]}</small></button>`
+  ).join("");
+  $("summary").textContent = `${ITEMS.length} estates and apartments across ${names.length} areas`;
+}
+
+function render() {
+  const q = $("q").value.trim().toLowerCase();
+  let list = ITEMS.filter(i => (area === "All" || i.area === area) &&
+    (!q || [i.name, i.note, i.area].join(" ").toLowerCase().includes(q)));
+  if (me) list.forEach(i => i.km = km(me, i));
+  list.sort(me ? (a, b) => a.km - b.km : (a, b) => RANK[a.kind] - RANK[b.kind] || (b.score || 0) - (a.score || 0));
+
+  if (!list.length) {
+    $("list").innerHTML = `<p class="empty">No estates found here yet. Add the ones you see to my_sightings.csv.</p>`;
+    return;
+  }
+  $("list").innerHTML = list.map(i => {
+    const dest = `${i.lat},${i.lon}`;
+    const details = [
+      `<span class="tag ${i.kind}">${LABEL[i.kind]}</span>`,
+      `<span>${esc(i.area)}</span>`,
+      i.gates ? `<span>${i.gates} gate${i.gates > 1 ? "s" : ""}</span>` : "",
+      i.ha ? `<span>${i.ha} ha</span>` : "",
+      i.date ? `<span>Seen ${esc(i.date)}</span>` : "",
+    ].join("");
+    return `<article class="card">
+      <div class="top"><h2 class="name">${esc(i.name || "Unnamed estate near " + i.area)}</h2>
+        ${me ? `<span class="dist">${i.km.toFixed(1)} km</span>` : ""}</div>
+      <div class="meta">${details}</div>
+      ${i.note ? `<p class="note">${esc(i.note)}</p>` : ""}
+      <div class="actions">
+        <a class="go" href="https://www.google.com/maps/dir/?api=1&destination=${dest}" target="_blank" rel="noopener">Directions</a>
+        <a href="https://www.google.com/maps/search/?api=1&query=${dest}" target="_blank" rel="noopener">View place</a>
+        <button type="button" data-copy="${dest}">Copy</button>
+      </div>
+    </article>`;
+  }).join("");
+}
+
+$("areas").addEventListener("click", e => {
+  const b = e.target.closest("[data-area]"); if (!b) return;
+  area = b.dataset.area;
+  try { localStorage.setItem("area", area); } catch (err) {}
+  renderAreas(); render();
+});
+$("q").addEventListener("input", render);
+$("list").addEventListener("click", async e => {
+  const b = e.target.closest("[data-copy]"); if (!b) return;
+  try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copied"; }
+  catch (err) { b.textContent = b.dataset.copy; }
+});
+$("near").addEventListener("click", () => {
+  if (!navigator.geolocation) { $("status").textContent = "Your browser can't share your location."; return; }
+  $("status").textContent = "Finding your location...";
+  navigator.geolocation.getCurrentPosition(
+    p => { me = { lat: p.coords.latitude, lon: p.coords.longitude }; $("status").textContent = "Sorted by distance from you."; render(); },
+    () => { $("status").textContent = "Location was blocked. Allow location for this site and try again."; },
+    { enableHighAccuracy: true, timeout: 15000 }
+  );
+});
+
+renderAreas(); render();
+</script>
+</body>
+</html>
