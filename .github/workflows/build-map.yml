@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch:        # "Run workflow" button on the Actions tab
+    inputs:
+      bbox:
+        description: "Search area: SOUTH WEST NORTH EAST (blank = default below)"
+        required: false
   schedule:
     - cron: "17 3 * * 1"    # every Monday, to pick up new OpenStreetMap edits
 
@@ -11,6 +15,11 @@ permissions:
   contents: write   # to save results to the map-output branch
   pages: write
   id-token: write
+
+env:
+  # Ruaka (west) to Thika Road at Muthaiga (east): Ruaka, Two Rivers, Runda, Gigiri,
+  # Muthaiga North, Ridgeways, Garden Estate, Kiambu Road.
+  DEFAULT_BBOX: "-1.260 36.745 -1.175 36.865"
 
 concurrency:
   group: pages
@@ -35,7 +44,9 @@ jobs:
         run: |
           EXTRA=""
           if [ -n "$GOOGLE_MAPS_API_KEY" ]; then EXTRA="--google"; fi
-          python find_gated.py --out site $EXTRA
+          BBOX="${{ github.event.inputs.bbox }}"
+          if [ -z "$BBOX" ]; then BBOX="$DEFAULT_BBOX"; fi
+          python find_gated.py --bbox $BBOX --out site $EXTRA
           cp site/gated_map.html site/index.html
           rm -f site/osm_raw.json
 
@@ -44,7 +55,7 @@ jobs:
         run: |
           pip install playwright
           python -m playwright install --with-deps chromium
-          python snapshot.py --site site --top 10
+          python snapshot.py --site site --top 25
 
       - name: Save results to the map-output branch
         continue-on-error: true
