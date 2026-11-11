@@ -82,6 +82,7 @@ def overpass_query(bbox):
   way["building"="apartments"]["name"]{b};
   node["barrier"~"gate|lift_gate|sliding_gate|swing_gate|entrance"]{b};
   node["entrance"]{b};
+  node["place"~"suburb|neighbourhood|quarter|village|town|hamlet"]["name"]{b};
   way["barrier"~"wall|fence"]{b};
 );
 out geom tags;
@@ -175,9 +176,12 @@ def relation_to_polygon(el):
 
 
 def parse(osm):
-    areas, gates, walls = [], [], []
+    areas, gates, walls, places = [], [], [], []
     for el in osm.get("elements", []):
         tags = el.get("tags", {})
+        if el["type"] == "node" and "place" in tags:
+            places.append({"name": tags["name"], "lat": el["lat"], "lon": el["lon"]})
+            continue
         if el["type"] == "node":
             gates.append({"pt": Point(el["lon"], el["lat"]), "tags": tags, "id": el["id"]})
             continue
@@ -188,7 +192,41 @@ def parse(osm):
             walls.append(shape if shape.geom_type == "LineString" else shape.boundary)
         elif shape.geom_type in ("Polygon", "MultiPolygon"):
             areas.append({"shape": shape, "tags": tags, "id": f"{el['type']}/{el['id']}"})
-    return areas, gates, walls
+    return areas, gates, walls, places
+
+
+def nearest_place(lat, lon, places):
+    """Name of the closest neighbourhood/village, e.g. 'Ruaka'."""
+    if not places:
+        return "Other"
+    best = min(places, key=lambda p: (p["lat"] - lat) ** 2 + (p["lon"] - lon) ** 2)
+    return best["name"]
+
+
+def build_directory(results, sightings, google_hits, places, out_html):
+    """A list page: pick an area, see its estates, tap for directions. No map."""
+    items = []
+    for r in results:
+        items.append({"name": r["name"], "area": nearest_place(r["lat"], r["lon"], places),
+                      "lat": round(r["lat"], 6), "lon": round(r["lon"], 6),
+                      "kind": r["tier"], "score": r["score"], "gates": r["gates"],
+                      "ha": round(r["area_m2"] / 10_000, 1), "why": "; ".join(r["reasons"]),
+                      "source": "map"})
+    for sg in sightings:
+        items.append({"name": sg.get("name", ""), "area": nearest_place(sg["lat"], sg["lon"], places),
+                      "lat": sg["lat"], "lon": sg["lon"], "kind": "seen",
+                      "note": sg.get("notes", ""), "date": sg.get("date_seen", ""),
+                      "source": "sighting"})
+    for g in google_hits:
+        items.append({"name": g["name"], "area": nearest_place(g["lat"], g["lon"], places),
+                      "lat": g["lat"], "lon": g["lon"], "kind": "google",
+                      "note": g.get("address", ""), "source": "google"})
+    here = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(here, "directory_template.html"), encoding="utf-8") as f:
+        page = f.read()
+    data = json.dumps(items, ensure_ascii=False).replace("</", "<\\/")
+    with open(out_html, "w", encoding="utf-8") as f:
+        f.write(page.replace("/*DATA*/[]", data))
 
 
 # -------------------------------------------------------------------- scoring
@@ -394,7 +432,7 @@ def main():
         with open(os.path.join(args.out, "osm_raw.json"), "w", encoding="utf-8") as f:
             json.dump(osm, f)
 
-    areas, gates, walls = parse(osm)
+    areas, gates, walls, places = parse(osm)
     walls_union = unary_union(walls) if walls else None
     print(f"Found {len(areas)} residential shapes, {len(gates)} gates, {len(walls)} walls/fences")
 
@@ -426,6 +464,8 @@ def main():
     sightings = load_sightings(args.sightings)
     out_html = os.path.join(args.out, "gated_map.html")
     build_map(bbox, results, loose, sightings, google_hits, out_html)
+    build_directory(results, sightings, google_hits, places,
+                    os.path.join(args.out, "directory.html"))
     write_outputs(results, args.out)
 
     likely = sum(r["tier"] == "likely" for r in results)

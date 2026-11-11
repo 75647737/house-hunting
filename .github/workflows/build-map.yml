@@ -47,7 +47,8 @@ jobs:
           BBOX="${{ github.event.inputs.bbox }}"
           if [ -z "$BBOX" ]; then BBOX="$DEFAULT_BBOX"; fi
           python find_gated.py --bbox $BBOX --out site $EXTRA
-          cp site/gated_map.html site/index.html
+          cp site/directory.html site/index.html
+          cp site/gated_map.html site/map.html
           rm -f site/osm_raw.json
 
       - name: Take pictures of the estates
