@@ -1,0 +1,54 @@
+name: Build gated community map
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:        # "Run workflow" button on the Actions tab
+  schedule:
+    - cron: "17 3 * * 1"    # every Monday, to pick up new OpenStreetMap edits
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Find gated communities
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          EXTRA=""
+          if [ -n "$GOOGLE_MAPS_API_KEY" ]; then EXTRA="--google"; fi
+          python find_gated.py --out site $EXTRA
+          cp site/gated_map.html site/index.html
+          rm -f site/osm_raw.json
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
